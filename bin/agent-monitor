@@ -1,0 +1,13 @@
+#!/bin/sh
+set -eu
+SELF=$0
+while [ -L "$SELF" ]; do
+  target=$(readlink "$SELF")
+  case $target in
+    /*) SELF=$target ;;
+    *) SELF=$(dirname "$SELF")/$target ;;
+  esac
+done
+ROOT=$(CDPATH= cd -- "$(dirname -- "$SELF")/.." && pwd)
+cd "$ROOT"
+exec python3 -m monitor.cli "$@"

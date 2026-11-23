@@ -1,0 +1,35 @@
+# Demo configuration: fictional data only, no email, no real accounts.
+[general]
+timezone = "UTC"
+run_times = ["08:00", "18:00"]
+port = 8788
+lookback_hours = 36
+stale_after_days = 7
+
+[identity]
+login = "demo-user"
+name = "Demo User"
+bio = "A demo persona used for screenshots. Works on billing sync, reconciliation and small developer tools."
+domains = ["billing sync", "ledger reconciliation", "developer tooling"]
+
+[github]
+orgs = ["acme"]
+repos = ["acme/orbit"]
+own_repos = true
+priority_repos = ["acme/orbit", "demo-user/pixel-picker"]
+
+[llm]
+provider = "claude_cli"
+
+[email]
+enabled = false
+to = ["demo@example.com"]
+from = "Secretary <secretary@example.com>"
+
+[dashboard]
+title = "Secretary"
+
+[paths]
+store_dir = "demo/store"
+digest_dir = "demo/digests"
+log_dir = "demo/logs"
