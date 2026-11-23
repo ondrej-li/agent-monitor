@@ -18,8 +18,8 @@ Rules:
 - Be concise: one short paragraph or a few bullets, at most ~200 words. No praise, no filler.
 - Ground every statement in the provided context. If it is not there, say so; never invent
   PR/issue numbers, CI results, merge status or dates.
-- `focus` is what this thread is about (an idea, an alert, an item, or null for general chat).
-  Answer about it first, then widen to related work.
+- `focus` is what this thread is about (an idea, an alert, an item, a project, a risk or a
+  next action; null for general chat). Answer about it first, then widen to related work.
 - Alerts are the ongoing points of attention; ideas are tracked suggestions. Their status and
   history (first seen, last seen, how often) are in the context — use them.
 - Emit actions ONLY when he asks you to remember something. A question deserves no action.
@@ -42,7 +42,7 @@ def open_state(cfg):
 
 
 def parse_thread(thread: str) -> tuple[str, str]:
-    for prefix in ("item", "idea", "alert"):
+    for prefix in ("item", "idea", "alert", "topic"):
         if thread.startswith(prefix + ":"):
             return prefix, thread[len(prefix) + 1 :]
     return "general", ""
@@ -56,6 +56,8 @@ def thread_object(state, thread: str) -> dict | None:
         return state.idea(ref)
     if kind == "alert":
         return state.alert(ref)
+    if kind == "topic":
+        return state.topic(ref)
     return None
 
 
@@ -64,10 +66,15 @@ def thread_label(state, thread: str) -> str:
         return "General"
     kind, ref = parse_thread(thread)
     obj = thread_object(state, thread)
+    if obj is None and kind == "topic":
+        obj = topic_from_digest(_latest_digest(state), ref)
     if obj:
         title = (obj.get("title") or ref)[:80]
         if kind == "item":
             return f"{obj.get('repo')}#{obj.get('number')} · {title[:70]}"
+        if kind == "topic":
+            topic_kind = obj.get("kind") or ref.split(":", 1)[0]
+            return f"{topic_kind.title()} · {title}"
         return f"{kind.title()} · {title}"
     return f"{kind.title()} · {ref}"
 
@@ -140,9 +147,34 @@ def _trim_idea(record: dict) -> dict:
     }
 
 
+def topic_from_digest(payload: dict | None, ref: str) -> dict | None:
+    """Resolve a topic thread from the current briefing when no topic file exists yet."""
+    if not payload:
+        return None
+    digest = payload.get("digest") or {}
+    kind = ref.split(":", 1)[0]
+    if kind == "project":
+        for project in digest.get("projects") or []:
+            name = project.get("name") or "Project"
+            if store_mod.topic_key("project", name) == ref:
+                return {"kind": "project", "title": name, "payload": project, "seen_count": 1}
+    elif kind == "risk":
+        for risk in digest.get("risks") or []:
+            if store_mod.topic_key("risk", risk) == ref:
+                return {"kind": "risk", "title": risk, "payload": {"text": risk}, "seen_count": 1}
+    elif kind == "action":
+        for action in digest.get("next_actions") or []:
+            if store_mod.topic_key("action", action) == ref:
+                return {"kind": "action", "title": action, "payload": {"text": action}, "seen_count": 1}
+    return None
+
+
 def build_context(cfg, state, thread: str) -> dict:
     kind, ref = parse_thread(thread)
+    digest_payload = _latest_digest(state)
     focus = thread_object(state, thread)
+    if focus is None and kind == "topic":
+        focus = topic_from_digest(digest_payload, ref)
     repo = ""
     if focus:
         repo = focus.get("repo") or ""
@@ -153,17 +185,32 @@ def build_context(cfg, state, thread: str) -> dict:
         for message in state.messages(thread, limit=10)
         if message.get("status") == "ok"
     ]
+    focus_view = None
+    if focus:
+        if kind == "alert":
+            focus_view = {"kind": "alert", "record": _trim_alert(focus)}
+        elif kind == "idea":
+            focus_view = {"kind": "idea", "record": _trim_idea(focus)}
+        elif kind == "topic":
+            focus_view = {
+                "kind": focus.get("kind", "topic"),
+                "topic": focus.get("title"),
+                "seen_count": focus.get("seen_count"),
+                "payload": focus.get("payload") or {},
+            }
+            if focus.get("alert_id"):
+                alert_record = state.alert(focus["alert_id"])
+                if alert_record:
+                    focus_view["alert"] = _trim_alert(alert_record)
+        else:
+            focus_view = {"kind": kind, "record": focus}
     return {
         "now": store_mod.now_iso(),
         "login": cfg.get("identity.login"),
         "thread": thread,
-        "focus": (
-            {"kind": kind, "record": _trim_alert(focus) if kind == "alert" else _trim_idea(focus) if kind == "idea" else focus}
-            if focus
-            else None
-        ),
+        "focus": focus_view,
         "related_items": related,
-        "briefing": _trim_digest(_latest_digest(state)),
+        "briefing": _trim_digest(digest_payload),
         "open_items": [
             {
                 "key": row.get("key"),

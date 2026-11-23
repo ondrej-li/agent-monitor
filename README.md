@@ -18,10 +18,10 @@ the only network calls are to `gh`, your mail host and the model you choose.
 - **History that doesn't forget** — every point of attention and every idea is stored as
   its own file with first seen, last seen and a seen count. Acknowledge, dismiss or
   reopen it; nothing disappears when the next briefing arrives.
-- **Two-way chat** — every idea, alert and item has a **Discuss** link into its own chat
-  thread, grounded in that record plus the current briefing. Say "remember this idea: …"
-  and it joins the ledger; state a priority and it becomes a note that shapes future
-  briefings.
+- **Two-way chat** — every entry in the briefing (each needs-you row, project, idea, risk
+  and next action) has a **Discuss** button that opens its own thread, grounded in that
+  entry plus the current briefing. Say "remember this idea: …" and it joins the ledger;
+  state a priority and it becomes a note that shapes future briefings.
 - **Incremental and non-repeating** — PRs, issues and commits are diffed against the last
   run, and new ideas are checked against the ledger, so the same suggestion is never made
   twice (including close paraphrases).

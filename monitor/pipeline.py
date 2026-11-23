@@ -131,6 +131,12 @@ def _run_once(
             record = by_title.get((entry.get("title") or "").strip())
             if record:
                 entry["alert_id"] = record["id"]
+        for project in briefing.get("projects") or []:
+            state.record_topic("project", project.get("name") or "Project", project)
+        for text, record in zip(briefing.get("risks") or [], alerts["risks"]):
+            state.record_topic("risk", text, {"text": text}, alert_id=record["id"])
+        for action in briefing.get("next_actions") or []:
+            state.record_topic("action", action, {"text": action})
 
         counts = {
             "new": len(diff["new"]),

@@ -17,7 +17,7 @@ import sqlite3
 from datetime import datetime, timezone
 
 ID_RE = re.compile(r"^[A-Za-z0-9_-]{4,80}$")
-SUBDIRS = ("ideas", "alerts", "notes", "runs", "chats")
+SUBDIRS = ("ideas", "alerts", "notes", "runs", "chats", "topics")
 
 
 def utcnow() -> datetime:
@@ -37,6 +37,15 @@ def _fingerprint(text: str) -> str:
         }
     )
     return hashlib.sha1(" ".join(tokens).encode("utf-8")).hexdigest()[:12]
+
+
+TOPIC_KINDS = ("project", "risk", "action")
+TOPIC_RE = re.compile(r"^(project|risk|action):[a-f0-9]{10}$")
+
+
+def topic_key(kind: str, text: str) -> str:
+    """Stable thread key for a briefing entry, derived from its text."""
+    return f"{kind}:{_fingerprint(kind + '|' + (text or ''))[:10]}"
 
 
 def _new_id(stamp: datetime, fingerprint: str, suffix: str = "") -> str:
@@ -326,6 +335,44 @@ class Store:
         record["status"] = status
         record["updated_at"] = now_iso()
         return self._save_alert(record)
+
+    # ---------------------------------------------------------------- topics
+    @property
+    def topics_dir(self) -> pathlib.Path:
+        return self.root / "topics"
+
+    def record_topic(self, kind: str, title: str, payload: dict, alert_id: str | None = None) -> dict:
+        key = topic_key(kind, title)
+        path = self.topics_dir / f"{key.replace(':', '-')}.json"
+        record = _read_json(path, None) or {
+            "id": key,
+            "kind": kind,
+            "title": title,
+            "payload": payload,
+            "alert_id": alert_id or "",
+            "created_at": now_iso(),
+            "seen_count": 0,
+        }
+        record.update({"title": title, "payload": payload, "last_seen": now_iso()})
+        record["seen_count"] = int(record.get("seen_count") or 0) + 1
+        if alert_id:
+            record["alert_id"] = alert_id
+        _write_json(path, record)
+        return record
+
+    def topic(self, key: str) -> dict | None:
+        if not TOPIC_RE.match(key or ""):
+            return None
+        return _read_json(self.topics_dir / f"{key.replace(':', '-')}.json", None)
+
+    def topics(self) -> list[dict]:
+        records = [
+            record
+            for record in (_read_json(path, {}) for path in self.topics_dir.glob("*.json"))
+            if record
+        ]
+        records.sort(key=lambda row: row.get("last_seen", ""), reverse=True)
+        return records
 
     # ---------------------------------------------------------------- notes
     def notes(self, limit: int = 10) -> list[dict]:

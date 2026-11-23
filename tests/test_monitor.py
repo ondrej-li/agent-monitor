@@ -328,6 +328,48 @@ class ChatTests(unittest.TestCase):
         self.assertEqual(chat.thread_label(self.store, f"alert:{alert_id}"), "Alert · Attention")
 
 
+class TopicTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.store = store.Store(pathlib.Path(self.tmp.name) / "store")
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_topic_key_is_stable_and_scoped_by_kind(self):
+        self.assertEqual(store.topic_key("project", "acme/orbit"), store.topic_key("project", "acme/orbit"))
+        self.assertNotEqual(store.topic_key("project", "x"), store.topic_key("risk", "x"))
+
+    def test_record_topic_counts_repeats(self):
+        first = self.store.record_topic("project", "acme/orbit", {"status_line": "a"})
+        second = self.store.record_topic("project", "acme/orbit", {"status_line": "b"})
+        self.assertEqual(first["id"], second["id"])
+        self.assertEqual(self.store.topic(first["id"])["seen_count"], 2)
+        self.assertEqual(self.store.topic(first["id"])["payload"]["status_line"], "b")
+
+    def test_topic_thread_label(self):
+        record = self.store.record_topic("risk", "Imports time out", {"text": "Imports time out"})
+        self.assertEqual(chat.thread_label(self.store, f"topic:{record['id']}"), "Risk · Imports time out")
+
+    def test_every_digest_item_gets_a_discuss_button(self):
+        digest = {
+            "headline": "h",
+            "needs_you": [{"title": "Review #1", "why": "w", "link": "", "alert_id": "20260101T000000-abcdef"}],
+            "projects": [{"name": "acme/orbit", "status_line": "s", "bullets": ["b"]}],
+            "ideas": [{"idea_id": "20260101T000000-123456", "title": "i", "area": "a", "why_now": "w", "effort": "S"}],
+            "risks": ["Imports time out"],
+            "next_actions": ["Review #1"],
+        }
+        meta = {"when": datetime(2026, 11, 23, 8, 0, tzinfo=timezone.utc), "counts": {}}
+        html = render.digest_body_html(digest, meta, palette=render.PAGE, interactive=True)
+        self.assertIn("thread=alert:20260101T000000-abcdef", html)
+        self.assertEqual(html.count("thread=topic:project:"), 1)
+        self.assertEqual(html.count("thread=topic:risk:"), 1)
+        self.assertEqual(html.count("thread=topic:action:"), 1)
+        self.assertEqual(html.count("thread=idea:20260101T000000-123456"), 1)
+        self.assertNotIn("Discuss", render.digest_body_html(digest, meta))
+
+
 class ThemeTests(unittest.TestCase):
     def test_titles_lead_with_secretary_and_boot_theme(self):
         html = render.page("Chat", "<p>x</p>", active="chat")

@@ -9,6 +9,8 @@ import re
 from datetime import datetime
 from urllib.parse import quote
 
+from .store import topic_key
+
 FONT = "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif"
 MONO = "ui-monospace,SFMono-Regular,Menlo,Consolas,monospace"
 
@@ -195,13 +197,20 @@ def _link(url: str, label: str, palette: dict, *, weight: str = "500") -> str:
     )
 
 
-def _thread_link(thread: str, palette: dict, label: str = "discuss") -> str:
+def _chip(thread: str, palette: dict, label: str = "Discuss") -> str:
     if not thread:
         return ""
     return (
-        f' <a href="/chat?thread={quote(thread, safe=":")}" style="color:{palette["muted"]};'
-        f'font-size:12px;font-weight:500;text-decoration:none;white-space:nowrap">{esc(label)}</a>'
+        f' <a href="/chat?thread={quote(thread, safe=":")}" style="display:inline-block;'
+        f'padding:3px 10px;border-radius:999px;border:1px solid {palette["line"]};'
+        f'background:{palette["surface"]};color:{palette["accent"]};font-size:12px;'
+        f'font-weight:600;text-decoration:none;white-space:nowrap;vertical-align:middle">'
+        f"{esc(label)}</a>"
     )
+
+
+def _topic_chip(kind: str, text: str, palette: dict) -> str:
+    return _chip(f"topic:{topic_key(kind, text)}", palette)
 
 
 def _item_thread(url: str) -> str:
@@ -299,7 +308,7 @@ def digest_body_html(digest: dict, meta: dict, *, palette: dict | None = None, i
                     if entry.get("alert_id")
                     else _item_thread(entry.get("link", ""))
                 )
-                discuss = _thread_link(thread, p)
+                discuss = _chip(thread, p)
             rows.append(
                 f'<div style="padding:9px 0;{border}">'
                 f'{_link(entry.get("link", ""), entry.get("title", ""), p, weight="600")}'
@@ -329,10 +338,15 @@ def digest_body_html(digest: dict, meta: dict, *, palette: dict | None = None, i
                 if bullets
                 else ""
             )
+            chip = (
+                _topic_chip("project", project.get("name") or "Project", p) if interactive else ""
+            )
             parts.append(
                 f'<div style="margin:0 0 16px;padding-left:12px;border-left:2px solid {p["line"]}">'
+                f'<div style="display:flex;align-items:baseline;justify-content:space-between;'
+                f'gap:10px;flex-wrap:wrap">'
                 f'<div style="font-weight:650;font-size:15px">{esc(project.get("name"))}</div>'
-                f"{status}{list_html}</div>"
+                f"{chip}</div>{status}{list_html}</div>"
             )
     else:
         parts.append(_empty("No project activity in this window.", p))
@@ -361,7 +375,7 @@ def digest_body_html(digest: dict, meta: dict, *, palette: dict | None = None, i
                     if idea.get("idea_id")
                     else _item_thread(idea.get("link", ""))
                 )
-                discuss = _thread_link(thread, p)
+                discuss = _chip(thread, p)
             parts.append(
                 f'<div style="border:1px solid {p["line"]};border-radius:10px;padding:12px 14px;'
                 f'margin:0 0 10px;background:{p["raise"]}">'
@@ -376,14 +390,22 @@ def digest_body_html(digest: dict, meta: dict, *, palette: dict | None = None, i
 
     if risks:
         parts.append(_section_title("Risks", len(risks), p, p["warn"]))
-        items = "".join(f'<li style="margin:4px 0">{esc(risk)}</li>' for risk in risks)
+        items = "".join(
+            f'<li style="margin:6px 0">{esc(risk)}'
+            f'{_topic_chip("risk", risk, p) if interactive else ""}</li>'
+            for risk in risks
+        )
         parts.append(
             f'<ul style="margin:0 0 0 18px;padding:0;font-size:14px;color:{p["body2"]}">{items}</ul>'
         )
 
     if actions:
         parts.append(_section_title("Next actions", len(actions), p))
-        items = "".join(f'<li style="margin:5px 0">{esc(action)}</li>' for action in actions)
+        items = "".join(
+            f'<li style="margin:6px 0">{esc(action)}'
+            f'{_topic_chip("action", action, p) if interactive else ""}</li>'
+            for action in actions
+        )
         parts.append(
             f'<ol style="margin:0 0 0 18px;padding:0;font-size:14px;color:{p["body2"]}">{items}</ol>'
         )

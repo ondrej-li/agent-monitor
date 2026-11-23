@@ -186,6 +186,13 @@ def main() -> None:
     }
 
     started = now - timedelta(minutes=3)
+    for project in digest["projects"]:
+        state.record_topic("project", project["name"], project)
+    for text, record in zip(risks, alerts["risks"]):
+        state.record_topic("risk", text, {"text": text}, alert_id=record["id"])
+    for action in digest["next_actions"]:
+        state.record_topic("action", action, {"text": action})
+
     run_id = state.start_run("demo", "demo-model", started)
     meta = {
         "when": now,
