@@ -562,6 +562,19 @@ class Store:
         record["finished_at"] = fields.get("finished_at") or now_iso()
         _write_json(self.runs_dir / f"{run_id}.json", record)
 
+    def mark_running_errors(self, reason: str) -> int:
+        """Close out runs left 'running' by a crash or restart."""
+        count = 0
+        for path in self.runs_dir.glob("*.json"):
+            record = _read_json(path, {})
+            if record.get("status") == "running":
+                record["status"] = "error"
+                record["error"] = reason
+                record["finished_at"] = now_iso()
+                _write_json(path, record)
+                count += 1
+        return count
+
     # ---------------------------------------------------------------- commits
     @property
     def commits_path(self) -> pathlib.Path:

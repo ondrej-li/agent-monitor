@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import pathlib
 import sys
 import tempfile
@@ -26,6 +25,22 @@ class PromptParsingTests(unittest.TestCase):
     def test_rejects_non_json(self):
         with self.assertRaises(ValueError):
             digest.parse_response("nothing useful")
+
+    def test_build_prompt_uses_configured_domains(self):
+        from monitor import config as config_mod
+
+        cfg = config_mod.Config(
+            config_mod.deep_merge(
+                config_mod.DEFAULTS,
+                {"identity": {"login": "demo", "name": "Demo", "domains": ["billing sync"]}},
+            ),
+            pathlib.Path("."),
+        )
+        context = {"identity": {"login": "demo", "name": "Demo", "bio": "x"}}
+        system, user = digest.build_prompt(cfg, context)
+        self.assertIn("billing sync", system)
+        self.assertNotIn("{domains}", system)
+        self.assertIn('"login":"demo"', user)
 
     def test_normalize_clamps_and_defaults(self):
         result = digest.normalize(
@@ -204,6 +219,13 @@ class StoreTests(unittest.TestCase):
         self.assertEqual(self.store.messages("idea:abc123")[-1]["status"], "error")
         self.assertIn("idea:abc123", self.store.chat_index())
 
+    def test_mark_running_errors(self):
+        run_id = self.store.start_run("p", "m", datetime.now(timezone.utc))
+        self.assertEqual(self.store.mark_running_errors("server restarted"), 1)
+        record = self.store.run(run_id)
+        self.assertEqual(record["status"], "error")
+        self.assertEqual(record["error"], "server restarted")
+
     def test_state_roundtrip(self):
         self.store.set_state("last_success_at", "2026-11-23T08:00:00Z")
         self.assertEqual(self.store.get_state("last_success_at"), "2026-11-23T08:00:00Z")
@@ -376,6 +398,13 @@ class ThemeTests(unittest.TestCase):
         self.assertIn("<title>Secretary · Chat</title>", html)
         self.assertIn("localStorage.getItem('theme')", html)
         self.assertIn('prefers-color-scheme:dark', render.PAGE_CSS)
+
+    def test_run_progress_widget(self):
+        html = render.run_progress_html("Collecting from GitHub", "since 08:00", 20, 3.2)
+        self.assertIn('id="run-fill"', html)
+        self.assertIn("width:20%", html)
+        self.assertIn("/api/run", html)
+        self.assertIn("3s", html)
 
     def test_item_key_from_url(self):
         self.assertEqual(

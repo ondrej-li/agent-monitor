@@ -225,7 +225,7 @@ def build_context(
     }
 
 
-def build_prompt(context: dict) -> tuple[str, str]:
+def build_prompt(cfg, context: dict) -> tuple[str, str]:
     identity = context["identity"]
     domains = cfg.get("identity.domains") or []
     system = SYSTEM_PROMPT.format(

@@ -350,7 +350,6 @@ def collect(cfg, since: datetime, now: datetime) -> dict:
 
 
 def compute_since(cfg, last_success: str | None, now: datetime) -> datetime:
-    lookback = timedelta(hours=int(cfg.get("general.lookback_hours", 36)))
     if last_success:
         parsed = _parse_time(last_success)
         if parsed:

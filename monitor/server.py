@@ -13,7 +13,27 @@ from urllib.parse import parse_qs, quote, urlparse
 
 from . import chat, pipeline, render, store
 
-STATE = {"running": False, "started_at": None, "error": None}
+STATE = {
+    "running": False,
+    "started_at": None,
+    "finished_at": None,
+    "error": None,
+    "stage": "",
+    "message": "",
+}
+
+STAGE_LABELS = {
+    "start": ("Starting", 5),
+    "collect": ("Collecting from GitHub", 20),
+    "diff": ("Computing changes", 40),
+    "think": ("Writing the briefing", 55),
+    "record": ("Recording alerts and ideas", 80),
+    "render": ("Rendering the briefing", 88),
+    "deliver": ("Sending the email", 94),
+    "done": ("Finished", 100),
+    "error": ("Failed", 100),
+}
+
 LOCK = threading.Lock()
 CFG = None
 
@@ -27,6 +47,36 @@ def _state():
     return store.open_store(CFG)
 
 
+def _progress(stage: str, message: str) -> None:
+    with LOCK:
+        STATE["stage"] = stage
+        STATE["message"] = message
+
+
+def _run_status() -> dict:
+    stage = STATE.get("stage") or "start"
+    label, percent = STAGE_LABELS.get(stage, ("Working", 10))
+    elapsed = 0.0
+    if STATE.get("started_at"):
+        try:
+            elapsed = (
+                datetime.now(timezone.utc) - datetime.fromisoformat(STATE["started_at"])
+            ).total_seconds()
+        except ValueError:
+            elapsed = 0.0
+    return {
+        "running": STATE["running"],
+        "stage": stage,
+        "label": label,
+        "percent": percent,
+        "message": STATE.get("message") or "",
+        "started_at": STATE.get("started_at"),
+        "elapsed_s": round(elapsed, 1),
+        "error": STATE.get("error"),
+        "finished_at": STATE.get("finished_at"),
+    }
+
+
 def _latest() -> tuple[dict | None, dict | None]:
     for run in _state().runs(10):
         if run.get("digest_path"):
@@ -38,7 +88,7 @@ def _latest() -> tuple[dict | None, dict | None]:
 
 def _run_worker(send_email: bool = True) -> None:
     try:
-        pipeline.run_once(CFG, send_email=send_email, log=_log)
+        pipeline.run_once(CFG, send_email=send_email, log=_log, progress=_progress)
         STATE["error"] = None
     except Exception as exc:  # noqa: BLE001 - surfaced in the UI
         STATE["error"] = f"{type(exc).__name__}: {exc}"
@@ -46,6 +96,7 @@ def _run_worker(send_email: bool = True) -> None:
     finally:
         with LOCK:
             STATE["running"] = False
+            STATE["finished_at"] = datetime.now(timezone.utc).isoformat()
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -94,6 +145,8 @@ class Handler(BaseHTTPRequestHandler):
                         "store": str(state.root),
                     }
                 )
+            if path == "/api/run":
+                return self._json(_run_status())
             if path == "/api/chat":
                 query = parse_qs(urlparse(self.path).query)
                 thread = (query.get("thread") or ["general"])[0]
@@ -125,9 +178,12 @@ class Handler(BaseHTTPRequestHandler):
                 payload, run = _latest()
                 banner = ""
                 if STATE["running"]:
-                    banner = (
-                        "<strong>Briefing in progress…</strong> "
-                        '<span class="muted">this page refreshes in a minute.</span>'
+                    status = _run_status()
+                    banner = render.run_progress_html(
+                        status["label"],
+                        status["message"],
+                        status["percent"],
+                        status["elapsed_s"],
                     )
                 elif STATE["error"]:
                     banner = (
@@ -177,7 +233,10 @@ class Handler(BaseHTTPRequestHandler):
                         STATE.update(
                             running=True,
                             started_at=datetime.now(timezone.utc).isoformat(),
+                            finished_at=None,
                             error=None,
+                            stage="start",
+                            message="Starting a run",
                         )
                         started = True
                 if started:
@@ -214,6 +273,9 @@ def serve(cfg, port: int | None = None) -> None:
     stale = state.mark_pending_errors("The server restarted before answering. Ask again.")
     if stale:
         _log(f"marked {stale} pending chat message(s) as failed")
+    interrupted = state.mark_running_errors("The server restarted during this run.")
+    if interrupted:
+        _log(f"marked {interrupted} interrupted run(s) as failed")
     httpd = ThreadingHTTPServer((bind, port), Handler)
     _log(f"dashboard listening on http://{bind}:{port} (store: {state.root})")
     try:

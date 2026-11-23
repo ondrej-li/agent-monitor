@@ -111,6 +111,10 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:
 .kind{display:inline-block;font-size:10px;text-transform:uppercase;letter-spacing:.06em;font-weight:700;padding:2px 7px;border-radius:999px;background:var(--soft);color:var(--muted);border:1px solid var(--line)}
 .kind.risk{background:var(--warn-bg);color:var(--warn);border-color:transparent}
 .kind.needs_you{background:var(--danger-bg);color:var(--danger);border-color:transparent}
+/* run progress */
+.progress{height:8px;background:var(--soft);border-radius:999px;overflow:hidden;margin-top:10px}
+.progress-fill{height:100%;border-radius:999px;background:linear-gradient(90deg,var(--accent-strong),var(--accent),var(--accent-strong));background-size:200% 100%;animation:progress-slide 1.6s linear infinite;transition:width .6s var(--ease, ease)}
+@keyframes progress-slide{from{background-position:0 0}to{background-position:-200% 0}}
 /* chat */
 .chat-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
 .chat-thread{font-weight:650;font-size:15px}
@@ -937,6 +941,42 @@ def chat_page(
 }})();
 </script>"""
     return page("Chat", body, active="chat", dashboard_title=dashboard_title)
+
+
+def run_progress_html(label: str, message: str, percent: int = 10, elapsed: float = 0) -> str:
+    percent = max(3, min(100, int(percent)))
+    return f"""
+<div class="row">
+  <strong id="run-stage">{esc(label)}</strong>
+  <span class="muted" id="run-elapsed">{int(elapsed)}s</span>
+</div>
+<div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{percent}">
+  <div class="progress-fill" id="run-fill" style="width:{percent}%"></div>
+</div>
+<div class="muted" id="run-message" style="font-size:12px;margin-top:8px">{esc(message)}</div>
+<script>
+(function(){{
+  function tick(){{
+    fetch('/api/run', {{cache: 'no-store'}})
+      .then(function(r) {{ return r.json(); }})
+      .then(function(data) {{
+        var stage = document.getElementById('run-stage');
+        if (!stage) return;
+        stage.textContent = data.label || 'Working';
+        var message = document.getElementById('run-message');
+        if (message) message.textContent = data.message || '';
+        var fill = document.getElementById('run-fill');
+        if (fill) fill.style.width = Math.max(3, data.percent || 10) + '%';
+        var elapsed = document.getElementById('run-elapsed');
+        if (elapsed) elapsed.textContent = Math.round(data.elapsed_s || 0) + 's';
+        if (!data.running) {{ window.location.reload(); return; }}
+        setTimeout(tick, 2000);
+      }})
+      .catch(function() {{ setTimeout(tick, 4000); }});
+  }}
+  setTimeout(tick, 800);
+}})();
+</script>"""
 
 
 def message_page(title: str, message: str) -> str:

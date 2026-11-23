@@ -43,11 +43,14 @@ def _run_once(
     provider: str | None = None,
     since_hours: float | None = None,
     log=print,
+    progress=None,
 ) -> dict:
     started = time.monotonic()
     tz = ZoneInfo(cfg.get("general.timezone", "Europe/Prague"))
     now = datetime.now(tz)
     state = store.open_store(cfg)
+    report = progress or (lambda stage, message: None)
+    report("start", "Starting a run")
 
     spec = llm.resolve(cfg, provider)
     run_id = state.start_run(spec["name"], spec.get("model", ""), now.astimezone(timezone.utc))
@@ -59,12 +62,18 @@ def _run_once(
             since = gh.compute_since(cfg, state.get_state("last_success_at"), now)
 
         log(f"collecting GitHub data since {since.isoformat(timespec='minutes')} ...")
+        report("collect", f"Collecting GitHub data since {since.strftime('%Y-%m-%d %H:%M')}")
         collection = gh.collect(cfg, since, now)
         log(
             f"collected {len(collection['prs'])} PRs, {len(collection['issues'])} issues, "
             f"{len(collection['commits'])} commits across {len(collection['repos'])} repos"
         )
 
+        report(
+            "diff",
+            f"Collected {len(collection['prs'])} PRs, {len(collection['issues'])} issues "
+            f"and {len(collection['commits'])} commits; computing changes",
+        )
         state.record_commits(collection["commits"], now)
         diff = state.record_items([*collection["prs"], *collection["issues"]], now)
         current_keys = {item["key"] for item in [*collection["prs"], *collection["issues"]]}
@@ -74,7 +83,7 @@ def _run_once(
         context = digest_mod.build_context(
             cfg, collection, diff, board, existing_ideas, now, notes=state.notes(8)
         )
-        system, user = digest_mod.build_prompt(context)
+        system, user = digest_mod.build_prompt(cfg, context)
 
         degraded = False
         error_note = ""
@@ -91,6 +100,7 @@ def _run_once(
                     f"asking {candidate_spec['name']} "
                     f"({candidate_spec.get('model') or 'default'}) for the briefing ..."
                 )
+                report("think", f"Asking {candidate_spec['name']} for the briefing")
                 raw = llm.complete(cfg, system, user, provider=candidate)
                 briefing = digest_mod.normalize(digest_mod.parse_response(raw))
                 if not briefing["headline"]:
@@ -121,6 +131,7 @@ def _run_once(
             log(f"suppressed {len(dropped)} repeated idea(s)")
         briefing["ideas"] = kept
 
+        report("record", "Recording attention points and ideas")
         alerts = state.record_alerts(
             briefing.get("needs_you") or [],
             briefing.get("risks") or [],
@@ -158,11 +169,13 @@ def _run_once(
             "run_id": run_id,
             "dashboard_url": f"http://127.0.0.1:{cfg.get('general.port', 8787)}/",
         }
+        report("render", "Rendering the briefing")
         paths = render.write_digest(cfg, briefing, meta)
 
         email_error = ""
         email_subject = ""
         if send_email and cfg.get("email.enabled", True):
+            report("deliver", "Sending the email")
             try:
                 result = deliver.send_digest(cfg, briefing, meta)
                 email_subject = result["subject"]
@@ -171,6 +184,7 @@ def _run_once(
                 email_error = f"{type(exc).__name__}: {exc}"
                 log(f"email delivery failed: {email_error}")
         elif not send_email:
+            report("deliver", "Email skipped")
             log("email skipped (--no-email)")
 
         state.finish_run(
@@ -187,6 +201,7 @@ def _run_once(
         )
         state.set_state("last_success_at", now.isoformat())
         duration = time.monotonic() - started
+        report("done", "Finished")
         log(f"briefing written to {paths['md']} ({duration:.1f}s)")
         return {
             "run_id": run_id,
@@ -203,4 +218,5 @@ def _run_once(
         }
     except Exception as exc:
         state.finish_run(run_id, status="error", error=f"{type(exc).__name__}: {exc}")
+        report("error", f"{type(exc).__name__}: {exc}")
         raise

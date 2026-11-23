@@ -196,6 +196,7 @@ so any historical entry can become a conversation.
 - `/chat` chat threads
 - `/history` attention points, ideas and runs
 - `/health` JSON status
+- `/api/run` live run state (stage, message, percent, elapsed) used by the progress bar
 
 The theme follows the OS by default; the header toggle cycles **Auto → Light → Dark** and
 is remembered per browser. Email is always light, as email clients expect.
