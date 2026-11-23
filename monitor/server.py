@@ -59,9 +59,11 @@ def _run_status() -> dict:
     elapsed = 0.0
     if STATE.get("started_at"):
         try:
-            elapsed = (
-                datetime.now(timezone.utc) - datetime.fromisoformat(STATE["started_at"])
-            ).total_seconds()
+            start = datetime.fromisoformat(STATE["started_at"])
+            end = datetime.now(timezone.utc)
+            if not STATE["running"] and STATE.get("finished_at"):
+                end = datetime.fromisoformat(STATE["finished_at"])
+            elapsed = (end - start).total_seconds()
         except ValueError:
             elapsed = 0.0
     return {
