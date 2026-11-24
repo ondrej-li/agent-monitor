@@ -81,6 +81,7 @@ real account is needed to see the UI.
 | `render [PATH]` | Re-render an existing digest without calling the model. |
 | `status` | Recent runs with counts and errors. |
 | `test-email` | Send a delivery test. |
+| `test-notification` | Show a macOS notification so you can check permissions. |
 
 ## How a run works
 
@@ -129,6 +130,7 @@ priority_repos = ["you/main-project"]
 provider = "anthropic"           # anthropic | openai | deepseek | gemini | openrouter | claude_cli
 model = "claude-sonnet-4-5"
 fallback_provider = "claude_cli"
+claude_cli_timeout = 600         # the CLI is slower than an API call
 
 [email]
 to = ["you@example.com"]
@@ -200,6 +202,17 @@ so any historical entry can become a conversation.
 
 The theme follows the OS by default; the header toggle cycles **Auto → Light → Dark** and
 is remembered per browser. Email is always light, as email clients expect.
+
+The page reloads itself every `dashboard.reload_minutes` minutes (default 60, `0` turns it
+off) so a pinned dashboard stays current. It skips a reload while you are typing a chat
+message or an answer is pending.
+
+### Notifications
+
+After a run, if there are needs-you items or risks (at least `notifications.min_alerts`
+of them, default 1), agent-monitor shows a native macOS notification with the headline and
+counts. Failed runs notify too. Set `notifications.macos = false` to turn it off, and use
+`agent-monitor test-notification` to check that Notification Center allows it.
 
 ## Scheduling
 

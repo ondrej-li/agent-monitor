@@ -578,7 +578,32 @@ def load_digest(path: pathlib.Path) -> dict | None:
         return None
 
 
-def page(title: str, body: str, *, active: str = "", dashboard_title: str = "Secretary") -> str:
+def _reload_script(minutes: int) -> str:
+    if not minutes or minutes <= 0:
+        return ""
+    return f"""
+<script>
+(function(){{
+  var minutes = {int(minutes)};
+  function due(){{
+    var box = document.querySelector('.chat-form textarea');
+    if (box && box.value.trim()) {{ setTimeout(due, 60000); return; }}
+    if (document.querySelector('.msg.pending')) {{ setTimeout(due, 60000); return; }}
+    window.location.reload();
+  }}
+  setTimeout(due, minutes * 60000);
+}})();
+</script>"""
+
+
+def page(
+    title: str,
+    body: str,
+    *,
+    active: str = "",
+    dashboard_title: str = "Secretary",
+    reload_minutes: int = 0,
+) -> str:
     tabs = [
         ("/", "Latest", "latest"),
         ("/chat", "Chat", "chat"),
@@ -607,6 +632,7 @@ def page(title: str, body: str, *, active: str = "", dashboard_title: str = "Sec
   <nav>{nav}</nav>
 </header>
 <main>{body}</main>
+{_reload_script(reload_minutes)}
 {THEME_TOGGLE_JS}
 </body></html>"""
 
@@ -764,7 +790,9 @@ def _runs_table(runs: list[dict]) -> str:
     )
 
 
-def history_page(alerts: list[dict], ideas: list[dict], runs: list[dict]) -> str:
+def history_page(
+    alerts: list[dict], ideas: list[dict], runs: list[dict], *, reload_minutes: int = 0
+) -> str:
     active_alerts = [alert for alert in alerts if alert.get("status") != "dismissed"]
     old_alerts = [alert for alert in alerts if alert.get("status") == "dismissed"]
     active_ideas = [idea for idea in ideas if idea.get("status") != "dismissed"]
@@ -803,10 +831,16 @@ def history_page(alerts: list[dict], ideas: list[dict], runs: list[dict]) -> str
   </div>
   {_runs_table(runs)}
 </div>"""
-    return page("History", body, active="history")
+    return page("History", body, active="history", reload_minutes=reload_minutes)
 
 
-def latest_page(payload: dict | None, run: dict | None = None, banner: str = "") -> str:
+def latest_page(
+    payload: dict | None,
+    run: dict | None = None,
+    banner: str = "",
+    *,
+    reload_minutes: int = 0,
+) -> str:
     banner_html = f'<div class="card" style="margin-bottom:14px">{banner}</div>' if banner else ""
     if not payload:
         body = (
@@ -816,7 +850,7 @@ def latest_page(payload: dict | None, run: dict | None = None, banner: str = "")
             "<p>Click “Run now” or run <code>agent-monitor run</code>.</p>"
             "</div></div>"
         )
-        return page("Latest", body, active="latest")
+        return page("Latest", body, active="latest", reload_minutes=reload_minutes)
     digest = payload.get("digest") or {}
     meta = payload.get("meta") or {}
     body = (
@@ -825,7 +859,12 @@ def latest_page(payload: dict | None, run: dict | None = None, banner: str = "")
         + digest_body_html(digest, meta, palette=PAGE, interactive=True)
         + "</div>"
     )
-    return page(digest.get("headline") or "Latest", body, active="latest")
+    return page(
+        digest.get("headline") or "Latest",
+        body,
+        active="latest",
+        reload_minutes=reload_minutes,
+    )
 
 
 def chat_page(
@@ -836,6 +875,7 @@ def chat_page(
     dashboard_title: str = "Secretary",
     notes: int = 0,
     ideas: int = 0,
+    reload_minutes: int = 0,
 ) -> str:
     bubbles = []
     for message in messages:
@@ -940,7 +980,13 @@ def chat_page(
   }}
 }})();
 </script>"""
-    return page("Chat", body, active="chat", dashboard_title=dashboard_title)
+    return page(
+        "Chat",
+        body,
+        active="chat",
+        dashboard_title=dashboard_title,
+        reload_minutes=reload_minutes,
+    )
 
 
 def run_progress_html(label: str, message: str, percent: int = 10, elapsed: float = 0) -> str:
@@ -979,9 +1025,9 @@ def run_progress_html(label: str, message: str, percent: int = 10, elapsed: floa
 </script>"""
 
 
-def message_page(title: str, message: str) -> str:
+def message_page(title: str, message: str, *, reload_minutes: int = 0) -> str:
     body = (
         f'<div class="card"><h2 style="margin:0 0 8px;font-size:16px">{esc(title)}</h2>'
         f'<p class="muted">{esc(message)}</p></div>'
     )
-    return page(title, body)
+    return page(title, body, reload_minutes=reload_minutes)

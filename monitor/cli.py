@@ -15,7 +15,7 @@ from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from . import config as config_mod
-from . import chat, deliver, gh, llm, pipeline, render, server, store
+from . import chat, deliver, gh, llm, notify, pipeline, render, server, store
 
 LAUNCH_AGENTS = pathlib.Path.home() / "Library" / "LaunchAgents"
 DIGEST_LABEL = "local.agent-monitor.digest"
@@ -61,6 +61,7 @@ fallback_provider = "claude_cli" # used when the primary provider fails
 max_tokens = 4000
 temperature = 0.2
 timeout = 180
+claude_cli_timeout = 600         # the CLI is slower than the API
 
 [email]
 enabled = true
@@ -72,6 +73,12 @@ ssh_host = "deploy@example.com"
 [dashboard]
 title = "Secretary"
 bind = "127.0.0.1"
+reload_minutes = 60              # reload the open dashboard every hour; 0 disables
+
+[notifications]
+macos = true                     # native Notification Center banners after a run
+sound = true
+min_alerts = 1                   # only notify when at least this many alerts/risks
 
 # Durable state lives in files, not in a database.
 # [paths]
@@ -290,6 +297,13 @@ def cmd_doctor(cfg, args) -> int:
         loaded.append(proc.returncode == 0)
     failures += not _check(all(loaded), "launchd", f"digest={loaded[0]} server={loaded[1]}")
 
+    notify_enabled = bool(cfg.get("notifications.macos", True))
+    notify_available = sys.platform == "darwin" and bool(shutil.which("osascript"))
+    if notify_enabled:
+        failures += not _check(notify_available, "notifications", "macOS via osascript")
+    else:
+        _check(True, "notifications", "disabled")
+
     print()
     print("all checks passed" if not failures else f"{failures} check(s) need attention")
     return 0 if not failures else 1
@@ -447,6 +461,20 @@ def cmd_render(cfg, args) -> int:
     return 0
 
 
+def cmd_test_notification(cfg, args) -> int:
+    sent, detail = notify.macos(
+        "Secretary",
+        "Notifications work. New alerts will look like this.",
+        subtitle="agent-monitor test",
+        sound=True,
+    )
+    if not sent:
+        print(f"notification failed: {detail}", file=sys.stderr)
+        return 1
+    print("notification sent")
+    return 0
+
+
 def cmd_test_email(cfg, args) -> int:
     result = deliver.send_test(cfg)
     print(f"sent via {result['transport']}: {result['subject']}")
@@ -519,6 +547,9 @@ def build_parser() -> argparse.ArgumentParser:
     re_render = sub.add_parser("render", help="re-render a digest (latest by default)")
     re_render.add_argument("path", nargs="?")
     re_render.set_defaults(func=cmd_render)
+
+    test_notification = sub.add_parser("test-notification", help="show a macOS notification")
+    test_notification.set_defaults(func=cmd_test_notification)
 
     test_email = sub.add_parser("test-email", help="send a delivery test")
     test_email.set_defaults(func=cmd_test_email)

@@ -49,6 +49,7 @@ DEFAULTS: dict[str, Any] = {
         "base_url": "",
         "api_key_env": "",
         "fallback_provider": "claude_cli",
+        "claude_cli_timeout": 600,
         "claude_cli_bin": "npx",
         "claude_cli_args": ["-y", "@anthropic-ai/claude-code@latest", "-p"],
         "claude_cli_model": "",
@@ -66,7 +67,8 @@ DEFAULTS: dict[str, Any] = {
         "smtp_password_secret": "AGENT_MONITOR_SMTP_PASSWORD",
         "subject_prefix": "Secretary",
     },
-    "dashboard": {"title": "Secretary", "bind": "127.0.0.1"},
+    "dashboard": {"title": "Secretary", "bind": "127.0.0.1", "reload_minutes": 60},
+    "notifications": {"macos": True, "sound": True, "min_alerts": 1},
     "paths": {
         "data_dir": "data",
         "store_dir": "store",

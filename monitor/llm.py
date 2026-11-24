@@ -155,6 +155,7 @@ def _openai(cfg, spec: dict, key: str, system: str, user: str, timeout: int) -> 
 
 
 def _claude_cli(cfg, system: str, user: str, timeout: int) -> str:
+    timeout = int(cfg.get("llm.claude_cli_timeout", 600))
     binary = cfg.get("llm.claude_cli_bin", "npx")
     if not shutil.which(binary):
         binary = "claude"
@@ -171,10 +172,10 @@ def _claude_cli(cfg, system: str, user: str, timeout: int) -> str:
             input=prompt,
             capture_output=True,
             text=True,
-            timeout=timeout + 60,
+            timeout=timeout,
         )
     except subprocess.TimeoutExpired as exc:
-        raise LlmError(f"claude CLI timed out after {timeout + 60}s") from exc
+        raise LlmError(f"claude CLI timed out after {timeout}s") from exc
     if proc.returncode != 0:
         raise LlmError((proc.stderr or proc.stdout or "claude CLI failed").strip()[:500])
     text = proc.stdout.strip()

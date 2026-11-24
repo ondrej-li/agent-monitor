@@ -79,6 +79,13 @@ def _run_status() -> dict:
     }
 
 
+def _reload_minutes() -> int:
+    try:
+        return int(CFG.get("dashboard.reload_minutes", 60))
+    except (TypeError, ValueError):
+        return 60
+
+
 def _latest() -> tuple[dict | None, dict | None]:
     for run in _state().runs(10):
         if run.get("digest_path"):
@@ -167,12 +174,18 @@ class Handler(BaseHTTPRequestHandler):
                         dashboard_title=CFG.get("dashboard.title", "Secretary"),
                         notes=counts["notes"],
                         ideas=counts["ideas"],
+                        reload_minutes=_reload_minutes(),
                     )
                 )
             if path == "/history":
                 state = _state()
                 return self._html(
-                    render.history_page(state.alerts(), state.ideas(), state.runs(20))
+                    render.history_page(
+                        state.alerts(),
+                        state.ideas(),
+                        state.runs(20),
+                        reload_minutes=_reload_minutes(),
+                    )
                 )
             if path == "/ideas":
                 return self._redirect("/history#ideas")
@@ -192,7 +205,11 @@ class Handler(BaseHTTPRequestHandler):
                         f'<strong style="color:#b91c1c">Last run failed.</strong> '
                         f'<span class="muted">{render.esc(STATE["error"])}</span>'
                     )
-                return self._html(render.latest_page(payload, run, banner=banner))
+                return self._html(
+                    render.latest_page(
+                        payload, run, banner=banner, reload_minutes=_reload_minutes()
+                    )
+                )
             return self._html(render.message_page("Not found", "No such page."), 404)
         except Exception:  # noqa: BLE001 - never kill the server
             _log(traceback.format_exc())

@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-from monitor import chat, digest, render, store  # noqa: E402
+from monitor import chat, digest, notify, render, store  # noqa: E402
 
 
 class PromptParsingTests(unittest.TestCase):
@@ -390,6 +390,58 @@ class TopicTests(unittest.TestCase):
         self.assertEqual(html.count("thread=topic:action:"), 1)
         self.assertEqual(html.count("thread=idea:20260101T000000-123456"), 1)
         self.assertNotIn("Discuss", render.digest_body_html(digest, meta))
+
+
+class NotificationTests(unittest.TestCase):
+    def _cfg(self, **notifications):
+        from monitor import config as config_mod
+
+        return config_mod.Config(
+            config_mod.deep_merge(
+                config_mod.DEFAULTS, {"notifications": notifications}
+            ),
+            pathlib.Path("."),
+        )
+
+    def test_summary_counts_needs_and_risks(self):
+        summary, weight = notify.summarize(
+            {"needs_you": [{"title": "a"}, {"title": "b"}], "risks": ["r"], "ideas": [{"title": "i"}]}
+        )
+        self.assertEqual(weight, 3)
+        self.assertIn("2 need you", summary)
+        self.assertIn("1 risk", summary)
+        self.assertIn("1 idea", summary)
+
+    def test_quiet_window_is_not_worth_a_notification(self):
+        cfg = self._cfg(min_alerts=1)
+        worth, _ = notify.briefing_worth_attention(cfg, {"needs_you": [], "risks": []})
+        self.assertFalse(worth)
+
+    def test_threshold_is_configurable(self):
+        cfg = self._cfg(min_alerts=2)
+        worth, _ = notify.briefing_worth_attention(cfg, {"needs_you": [{"title": "a"}], "risks": []})
+        self.assertFalse(worth)
+        worth, _ = notify.briefing_worth_attention(
+            cfg, {"needs_you": [{"title": "a"}], "risks": ["r"]}
+        )
+        self.assertTrue(worth)
+
+    def test_disabled_notifications(self):
+        cfg = self._cfg(macos=False)
+        worth, _ = notify.briefing_worth_attention(
+            cfg, {"needs_you": [{"title": "a"}], "risks": []}
+        )
+        self.assertFalse(worth)
+
+    def test_applescript_escaping(self):
+        self.assertEqual(notify._escape('a "b" \\ c'), 'a \\"b\\" \\\\ c')
+
+    def test_reload_script_only_when_enabled(self):
+        enabled = render.page("x", "<p>y</p>", reload_minutes=60)
+        self.assertIn("var minutes = 60", enabled)
+        self.assertIn("minutes * 60000", enabled)
+        disabled = render.page("x", "<p>y</p>", reload_minutes=0)
+        self.assertNotIn("minutes * 60000", disabled)
 
 
 class ThemeTests(unittest.TestCase):

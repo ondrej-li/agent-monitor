@@ -7,7 +7,7 @@ import time
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
-from . import deliver, digest as digest_mod, gh, llm, render, store
+from . import deliver, digest as digest_mod, gh, llm, notify, render, store
 
 
 class PipelineError(RuntimeError):
@@ -187,6 +187,22 @@ def _run_once(
             report("deliver", "Email skipped")
             log("email skipped (--no-email)")
 
+        if send_email:
+            worth, summary = notify.briefing_worth_attention(cfg, briefing)
+            if worth:
+                sent, detail = notify.macos(
+                    "Secretary",
+                    summary,
+                    subtitle=briefing.get("headline") or "",
+                    sound=bool(cfg.get("notifications.sound", True)),
+                )
+                log(
+                    f"notification {'sent' if sent else 'failed'}: {summary}"
+                    + (f" ({detail})" if detail else "")
+                )
+            else:
+                log("notification skipped: nothing needs attention")
+
         state.finish_run(
             run_id,
             status="ok",
@@ -219,4 +235,11 @@ def _run_once(
     except Exception as exc:
         state.finish_run(run_id, status="error", error=f"{type(exc).__name__}: {exc}")
         report("error", f"{type(exc).__name__}: {exc}")
+        if send_email:
+            notify.macos(
+                "Secretary — run failed",
+                f"{type(exc).__name__}: {exc}"[:160],
+                subtitle="",
+                sound=bool(cfg.get("notifications.sound", True)),
+            )
         raise
