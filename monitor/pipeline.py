@@ -235,7 +235,7 @@ def _run_once(
     except Exception as exc:
         state.finish_run(run_id, status="error", error=f"{type(exc).__name__}: {exc}")
         report("error", f"{type(exc).__name__}: {exc}")
-        if send_email:
+        if send_email and cfg.get("notifications.macos", True):
             notify.macos(
                 "Secretary — run failed",
                 f"{type(exc).__name__}: {exc}"[:160],
